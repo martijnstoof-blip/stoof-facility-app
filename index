@@ -1,0 +1,369 @@
+# stoof-facility-app
+stoof-facility-app
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#1a1f8f"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<title>Stoof Facility</title>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f4f8;color:#1a1a1a}
+input,textarea,button,select{font-family:inherit;font-size:16px}
+input,textarea{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;outline:none}
+input:focus,textarea:focus{border-color:#1a1f8f;box-shadow:0 0 0 3px rgba(26,31,143,.12)}
+textarea{resize:vertical;min-height:90px}
+button{cursor:pointer}
+.bar{background:#1a1f8f;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.bar-left{display:flex;align-items:center;gap:10px}
+.bar-logo{display:flex;align-items:center;gap:8px}
+.bar-title{font-size:16px;font-weight:700;line-height:1.1}
+.bar-title small{display:block;font-size:10px;font-weight:400;letter-spacing:2px;opacity:.8;text-transform:uppercase}
+.back-btn{background:none;border:none;color:#fff;font-size:20px;padding:0 8px 0 0}
+.new-btn{background:#F4845F;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:14px}
+.body{padding:16px}
+.card{background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.lbl{font-size:13px;color:#555;margin-bottom:4px;display:block;margin-top:14px;font-weight:500}
+.err{font-size:12px;color:#c0392b;margin-top:3px;display:none}
+.err.show{display:block}
+.prio-row,.status-row,.cat-row{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.submit-btn{background:#1a1f8f;color:#fff;border:none;padding:13px 0;border-radius:10px;font-weight:700;width:100%;font-size:16px;margin-top:20px}
+.submit-btn:disabled{opacity:.6}
+.del-btn{margin-top:16px;width:100%;padding:10px 0;border-radius:8px;border:1px solid #F7C1C1;background:#FCEBEB;color:#A32D2D;font-weight:500;font-size:14px}
+.bdg{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.empty{text-align:center;padding:3rem 1rem;color:#888}
+.done-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:#f4f4f8}
+.ticket-num{font-family:monospace;font-size:13px;color:#1a1f8f;font-weight:700;background:#eef;padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:8px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1f8f;color:#fff;padding:10px 20px;border-radius:10px;font-size:14px;font-weight:500;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.2);display:none}
+.prio-btn,.cat-btn,.status-btn{padding:8px 10px;border-radius:8px;font-size:13px;border:1px solid #ddd;background:#fff;color:#666;font-weight:400;transition:none}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+var EJS_PUBLIC_KEY  = "FshUvG6srVXsj3bX-";
+var EJS_SERVICE_ID  = "service_yimsney";
+var EJS_TEMPLATE_ID = "template_e95zz6e";
+var ADMIN_EMAIL     = "test@stoof-facility.nl";
+
+emailjs.init(EJS_PUBLIC_KEY);
+
+var PR=[
+  {label:"Laag",    v:"laag",    c:"#3B6D11",bg:"#EAF3DE"},
+  {label:"Normaal", v:"normaal", c:"#1a1f8f",bg:"#EEEFFE"},
+  {label:"Hoog",    v:"hoog",    c:"#854F0B",bg:"#FAEEDA"},
+  {label:"Urgent",  v:"urgent",  c:"#A32D2D",bg:"#FCEBEB"}
+];
+var ST={
+  "Open":           {c:"#1a1f8f",bg:"#EEEFFE"},
+  "In behandeling": {c:"#854F0B",bg:"#FAEEDA"},
+  "Afgerond":       {c:"#3B6D11",bg:"#EAF3DE"}
+};
+var CATS=["Schoonmaak","Technisch","Catering","Beveiliging","Facilitair","Overig"];
+var KEY="stoof_v1";
+
+function getCounter(){var n=parseInt(localStorage.getItem("stoof_counter")||"0")+1;localStorage.setItem("stoof_counter",n);return n}
+function formatNum(n){return"STOOF-"+String(n).padStart(5,"0")}
+function loadTickets(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch{return[]}}
+function saveTickets(t){try{localStorage.setItem(KEY,JSON.stringify(t))}catch{}}
+function fmt(iso){return new Date(iso).toLocaleDateString("nl-NL",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}
+function prio(v){return PR.find(function(p){return p.v===v})||PR[1]}
+
+function showToast(msg,dur){
+  var t=document.getElementById("toast");t.textContent=msg;t.style.display="block";
+  setTimeout(function(){t.style.display="none"},dur||2500);
+}
+
+function sendEmail(params){
+  return emailjs.send(EJS_SERVICE_ID,EJS_TEMPLATE_ID,params);
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
+var state={
+  view:"list",       // list | new | detail
+  tickets:loadTickets(),
+  sel:null,
+  errors:{}
+};
+
+// Form data leeft buiten state zodat re-renders het niet resetten
+var form={naam:"",email:"",locatie:"",categorie:"Schoonmaak",omschrijving:"",prioriteit:"normaal",foto:null};
+
+function resetForm(){form={naam:"",email:"",locatie:"",categorie:"Schoonmaak",omschrijving:"",prioriteit:"normaal",foto:null}}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function goTo(view,sel){
+  state.view=view;state.sel=sel||null;state.errors={};
+  if(view==="new")resetForm();
+  render();
+}
+
+function render(){
+  var app=document.getElementById("app");
+  app.innerHTML="";
+  renderBar(app);
+  var body=document.createElement("div");body.className="body";
+  if(state.view==="list")renderList(body);
+  else if(state.view==="new")renderNew(body);
+  else if(state.view==="detail"&&state.sel)renderDetail(body);
+  app.appendChild(body);
+}
+
+var LOGO='<svg width="30" height="30" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="7" stroke="#fff" stroke-width="2.5" fill="none"/><path d="M19 5 Q26 5 26 12 Q26 19 19 19 L19 5Z" fill="#F4845F"/><path d="M5 19 Q5 26 12 26 Q19 26 19 19 L5 19Z" fill="#F4845F"/><circle cx="28" cy="28" r="7" stroke="#fff" stroke-width="2.5" fill="none"/></svg>';
+
+function renderBar(app){
+  var bar=document.createElement("div");bar.className="bar";
+  var left=document.createElement("div");left.className="bar-left";
+  if(state.view!=="list"){
+    var back=document.createElement("button");back.className="back-btn";back.textContent="←";
+    back.onclick=function(){goTo("list")};left.appendChild(back);
+  }
+  var logoWrap=document.createElement("div");logoWrap.className="bar-logo";
+  logoWrap.innerHTML=LOGO;
+  var ttl=document.createElement("div");ttl.className="bar-title";
+  ttl.innerHTML="Stoof<small>Facility</small>";
+  logoWrap.appendChild(ttl);left.appendChild(logoWrap);bar.appendChild(left);
+  if(state.view==="list"){
+    var nb=document.createElement("button");nb.className="new-btn";nb.textContent="+ Nieuw";
+    nb.onclick=function(){goTo("new")};bar.appendChild(nb);
+  } else {
+    var vt=document.createElement("span");
+    vt.style.cssText="font-size:14px;font-weight:600;color:rgba(255,255,255,.85)";
+    vt.textContent=state.view==="new"?"Nieuw ticket":"Ticketdetails";
+    bar.appendChild(vt);
+  }
+  app.appendChild(bar);
+}
+
+function mkBadge(label,col,bg){
+  var s=document.createElement("span");s.className="bdg";s.textContent=label;s.style.color=col;s.style.background=bg;return s;
+}
+function mkCard(){var c=document.createElement("div");c.className="card";return c}
+
+function renderList(body){
+  if(!state.tickets.length){
+    var em=document.createElement("div");em.className="empty";
+    em.innerHTML="<p style='font-size:15px'>Nog geen tickets.</p><p style='font-size:13px;margin-top:6px'>Tik op '+ Nieuw' om te beginnen.</p>";
+    body.appendChild(em);return;
+  }
+  state.tickets.forEach(function(t){
+    var c=mkCard();c.style.cursor="pointer";
+    c.onclick=function(){state.sel=Object.assign({},t);state.view="detail";render()};
+    var top=document.createElement("div");top.style.cssText="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px";
+    var tl=document.createElement("div");
+    var num=document.createElement("span");num.className="ticket-num";num.style.marginBottom="4px";num.textContent=t.nummer||"";
+    var cat=document.createElement("div");cat.style.cssText="font-size:12px;color:#888";cat.textContent=t.categorie||"";
+    tl.appendChild(num);tl.appendChild(cat);
+    var bb=document.createElement("div");bb.style.cssText="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end";
+    var p=prio(t.prioriteit);bb.appendChild(mkBadge(p.label,p.c,p.bg));
+    var sc=ST[t.status]||{c:"#666",bg:"#eee"};bb.appendChild(mkBadge(t.status,sc.c,sc.bg));
+    top.appendChild(tl);top.appendChild(bb);c.appendChild(top);
+    var loc=document.createElement("p");loc.style.cssText="font-weight:600;font-size:15px;margin-bottom:3px";loc.textContent=t.locatie;
+    var om=document.createElement("p");om.style.cssText="font-size:13px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";om.textContent=t.omschrijving;
+    var meta=document.createElement("p");meta.style.cssText="font-size:12px;color:#999;margin-top:6px";meta.textContent="👤 "+t.naam+" · "+fmt(t.aangemaakt);
+    c.appendChild(loc);c.appendChild(om);c.appendChild(meta);body.appendChild(c);
+  });
+}
+
+function renderNew(body){
+  var c=mkCard();
+
+  // Naam
+  var lNaam=document.createElement("label");lNaam.className="lbl";lNaam.textContent="Naam melder *";c.appendChild(lNaam);
+  var iNaam=document.createElement("input");iNaam.type="text";iNaam.placeholder="Voor- en achternaam";iNaam.value=form.naam;
+  iNaam.oninput=function(){form.naam=this.value;errHide("eNaam")};c.appendChild(iNaam);
+  var eNaam=document.createElement("div");eNaam.className="err";eNaam.id="eNaam";eNaam.textContent="Verplicht veld";c.appendChild(eNaam);
+
+  // E-mail
+  var lEmail=document.createElement("label");lEmail.className="lbl";lEmail.textContent="E-mailadres melder *";c.appendChild(lEmail);
+  var iEmail=document.createElement("input");iEmail.type="email";iEmail.placeholder="naam@bedrijf.nl";iEmail.value=form.email;
+  iEmail.oninput=function(){form.email=this.value;errHide("eEmail")};c.appendChild(iEmail);
+  var eEmail=document.createElement("div");eEmail.className="err";eEmail.id="eEmail";eEmail.textContent="Geldig e-mailadres verplicht";c.appendChild(eEmail);
+
+  // Locatie
+  var lLoc=document.createElement("label");lLoc.className="lbl";lLoc.textContent="Locatie / ruimte *";c.appendChild(lLoc);
+  var iLoc=document.createElement("input");iLoc.type="text";iLoc.placeholder="Bijv. Kantine, Vergaderruimte A3";iLoc.value=form.locatie;
+  iLoc.oninput=function(){form.locatie=this.value;errHide("eLoc")};c.appendChild(iLoc);
+  var eLoc=document.createElement("div");eLoc.className="err";eLoc.id="eLoc";eLoc.textContent="Verplicht veld";c.appendChild(eLoc);
+
+  // Categorie
+  var lCat=document.createElement("label");lCat.className="lbl";lCat.textContent="Categorie";c.appendChild(lCat);
+  var catRow=document.createElement("div");catRow.className="cat-row";catRow.id="catRow";
+  CATS.forEach(function(cat){renderCatBtn(catRow,cat)});c.appendChild(catRow);
+
+  // Omschrijving
+  var lOm=document.createElement("label");lOm.className="lbl";lOm.textContent="Omschrijving *";c.appendChild(lOm);
+  var iOm=document.createElement("textarea");iOm.placeholder="Beschrijf het probleem...";iOm.value=form.omschrijving;
+  iOm.oninput=function(){form.omschrijving=this.value;errHide("eOm")};c.appendChild(iOm);
+  var eOm=document.createElement("div");eOm.className="err";eOm.id="eOm";eOm.textContent="Verplicht veld";c.appendChild(eOm);
+
+  // Prioriteit
+  var lPrio=document.createElement("label");lPrio.className="lbl";lPrio.textContent="Prioriteit";c.appendChild(lPrio);
+  var prioRow=document.createElement("div");prioRow.className="prio-row";prioRow.id="prioRow";
+  PR.forEach(function(p){renderPrioBtn(prioRow,p)});c.appendChild(prioRow);
+
+  // Foto
+  var lFoto=document.createElement("label");lFoto.className="lbl";lFoto.textContent="Foto (optioneel)";c.appendChild(lFoto);
+  var iFoto=document.createElement("input");iFoto.type="file";iFoto.accept="image/*";iFoto.setAttribute("capture","environment");
+  iFoto.onchange=function(e){
+    var f=e.target.files[0];if(!f)return;
+    var r=new FileReader();r.onload=function(ev){form.foto=ev.target.result;
+      var prev=document.getElementById("fotoPreview");
+      if(prev){prev.src=ev.target.result}else{
+        var img=document.createElement("img");img.id="fotoPreview";img.src=ev.target.result;img.style.cssText="margin-top:10px;width:100%;border-radius:8px;max-height:200px;object-fit:cover";c.insertBefore(img,sub);
+      }
+    };r.readAsDataURL(f);
+  };
+  c.appendChild(iFoto);
+  if(form.foto){var prevImg=document.createElement("img");prevImg.id="fotoPreview";prevImg.src=form.foto;prevImg.style.cssText="margin-top:10px;width:100%;border-radius:8px;max-height:200px;object-fit:cover";c.appendChild(prevImg);}
+
+  // Submit
+  var sub=document.createElement("button");sub.className="submit-btn";sub.textContent="Ticket indienen";
+  sub.onclick=function(){submitTicket(sub)};
+  c.appendChild(sub);
+  body.appendChild(c);
+}
+
+function renderCatBtn(row,cat){
+  var btn=document.createElement("button");btn.className="cat-btn";btn.textContent=cat;
+  applyCatStyle(btn,cat);
+  btn.onclick=function(){
+    form.categorie=cat;
+    var btns=document.querySelectorAll(".cat-btn");
+    btns.forEach(function(b){applyCatStyle(b,b.textContent)});
+  };
+  row.appendChild(btn);
+}
+
+function applyCatStyle(btn,cat){
+  var sel=form.categorie===cat;
+  btn.style.border=sel?"2px solid #1a1f8f":"1px solid #ddd";
+  btn.style.background=sel?"#EEEFFE":"#fff";
+  btn.style.color=sel?"#1a1f8f":"#666";
+  btn.style.fontWeight=sel?"600":"400";
+}
+
+function renderPrioBtn(row,p){
+  var btn=document.createElement("button");btn.className="prio-btn";btn.textContent=p.label;btn.style.flex="1";
+  applyPrioStyle(btn,p);
+  btn.onclick=function(){
+    form.prioriteit=p.v;
+    var btns=document.querySelectorAll(".prio-btn");
+    btns.forEach(function(b,i){applyPrioStyle(b,PR[i])});
+  };
+  row.appendChild(btn);
+}
+
+function applyPrioStyle(btn,p){
+  var sel=form.prioriteit===p.v;
+  btn.style.border=sel?"2px solid "+p.c:"1px solid #ddd";
+  btn.style.background=sel?p.bg:"#fff";
+  btn.style.color=sel?p.c:"#666";
+  btn.style.fontWeight=sel?"600":"400";
+}
+
+function errHide(id){var e=document.getElementById(id);if(e)e.classList.remove("show")}
+function errShow(id){var e=document.getElementById(id);if(e)e.classList.add("show")}
+
+function submitTicket(btn){
+  var ok=true;
+  if(!form.naam.trim()){errShow("eNaam");ok=false}
+  if(!form.email.trim()||form.email.indexOf("@")<0){errShow("eEmail");ok=false}
+  if(!form.locatie.trim()){errShow("eLoc");ok=false}
+  if(!form.omschrijving.trim()){errShow("eOm");ok=false}
+  if(!ok)return;
+
+  btn.disabled=true;btn.textContent="Verzenden...";
+  var num=formatNum(getCounter());
+  var t=Object.assign({id:Date.now(),nummer:num},form,{status:"Open",aangemaakt:new Date().toISOString()});
+  var updated=[t].concat(state.tickets);
+  saveTickets(updated);state.tickets=updated;
+
+  var ep={
+    ticket_nummer:num,melder_naam:t.naam,melder_email:t.email,
+    locatie:t.locatie,categorie:t.categorie,omschrijving:t.omschrijving,
+    prioriteit:prio(t.prioriteit).label,status:"Open",datum:fmt(t.aangemaakt),
+    admin_email:ADMIN_EMAIL
+  };
+
+  sendEmail(Object.assign({},ep,{to_email:ADMIN_EMAIL,to_name:"Stoof Facility"}))
+    .then(function(){return sendEmail(Object.assign({},ep,{to_email:t.email,to_name:t.naam}))})
+    .then(function(){showDone()})
+    .catch(function(){showToast("⚠️ Ticket opgeslagen, e-mail niet verzonden.",3000);showDone()});
+}
+
+function showDone(){
+  var app=document.getElementById("app");app.innerHTML="";
+  var d=document.createElement("div");d.className="done-screen";
+  d.innerHTML="<div style='font-size:56px'>✅</div><p style='font-size:20px;font-weight:700;color:#1a1f8f'>Ticket aangemaakt!</p><p style='font-size:14px;color:#888;margin-top:6px'>Je ontvangt een bevestiging per e-mail.</p>";
+  app.appendChild(d);
+  setTimeout(function(){resetForm();state.view="list";render()},2200);
+}
+
+function renderDetail(body){
+  var s=state.sel;
+  var c=mkCard();
+  var num=document.createElement("div");num.className="ticket-num";num.textContent=s.nummer||"";c.appendChild(num);
+  var top=document.createElement("div");top.style.cssText="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap";
+  var p=prio(s.prioriteit);top.appendChild(mkBadge(p.label,p.c,p.bg));
+  var sc=ST[s.status]||{c:"#666",bg:"#eee"};top.appendChild(mkBadge(s.status,sc.c,sc.bg));
+  if(s.categorie)top.appendChild(mkBadge(s.categorie,"#F4845F","#FEF0EB"));
+  c.appendChild(top);
+  [["Naam melder",s.naam],["E-mail",s.email||"-"],["Locatie / ruimte",s.locatie],["Aangemaakt op",fmt(s.aangemaakt)]].forEach(function(pair){
+    var div=document.createElement("div");div.style.marginBottom="10px";
+    var k=document.createElement("span");k.style.cssText="font-size:12px;color:#888;display:block;font-weight:500";k.textContent=pair[0];
+    var v=document.createElement("span");v.style.fontSize="15px";v.textContent=pair[1];
+    div.appendChild(k);div.appendChild(v);c.appendChild(div);
+  });
+  var odiv=document.createElement("div");
+  var ok=document.createElement("span");ok.style.cssText="font-size:12px;color:#888;display:block;font-weight:500";ok.textContent="Omschrijving";
+  var ov=document.createElement("p");ov.style.cssText="font-size:15px;line-height:1.6;margin-top:2px";ov.textContent=s.omschrijving;
+  odiv.appendChild(ok);odiv.appendChild(ov);c.appendChild(odiv);
+  if(s.foto){var img=document.createElement("img");img.src=s.foto;img.style.cssText="margin-top:12px;width:100%;border-radius:8px;max-height:240px;object-fit:cover";c.appendChild(img);}
+  body.appendChild(c);
+
+  var c2=mkCard();
+  var sl=document.createElement("p");sl.style.cssText="font-size:13px;color:#555;margin-bottom:10px;font-weight:500";sl.textContent="Status bijwerken";c2.appendChild(sl);
+  var sr=document.createElement("div");sr.className="status-row";
+  Object.keys(ST).forEach(function(st){
+    var cur=s.status===st;var sc2=ST[st];
+    var btn=document.createElement("button");btn.className="status-btn";btn.style.flex="1";btn.textContent=st;
+    btn.style.border=cur?"2px solid "+sc2.c:"1px solid #ddd";
+    btn.style.background=cur?sc2.bg:"#fff";btn.style.color=cur?sc2.c:"#666";btn.style.fontWeight=cur?"600":"400";
+    btn.onclick=function(){
+      var u=state.tickets.map(function(t){return t.id===s.id?Object.assign({},t,{status:st}):t});
+      saveTickets(u);state.tickets=u;state.sel=Object.assign({},s,{status:st});
+      // update badge visueel zonder volledige re-render
+      var btns=document.querySelectorAll(".status-btn");
+      btns.forEach(function(b){
+        var bst=b.textContent;var bsc=ST[bst]||{c:"#666",bg:"#eee"};var isCur=bst===st;
+        b.style.border=isCur?"2px solid "+bsc.c:"1px solid #ddd";
+        b.style.background=isCur?bsc.bg:"#fff";b.style.color=isCur?bsc.c:"#666";b.style.fontWeight=isCur?"600":"400";
+      });
+      if(s.email){
+        var ep={ticket_nummer:s.nummer||"",melder_naam:s.naam,melder_email:s.email,locatie:s.locatie,categorie:s.categorie||"",omschrijving:s.omschrijving,prioriteit:prio(s.prioriteit).label,status:st,datum:fmt(new Date().toISOString()),admin_email:ADMIN_EMAIL};
+        sendEmail(Object.assign({},ep,{to_email:s.email,to_name:s.naam}))
+          .then(function(){showToast("✉️ Melder op de hoogte gesteld.")})
+          .catch(function(){showToast("⚠️ Status bijgewerkt, e-mail mislukt.",3000)});
+      }
+    };
+    sr.appendChild(btn);
+  });
+  c2.appendChild(sr);
+  var del=document.createElement("button");del.className="del-btn";del.textContent="Ticket verwijderen";
+  del.onclick=function(){
+    var u=state.tickets.filter(function(t){return t.id!==s.id});
+    saveTickets(u);state.tickets=u;goTo("list");
+  };
+  c2.appendChild(del);body.appendChild(c2);
+}
+
+render();
+</script>
+</body>
+</html>
